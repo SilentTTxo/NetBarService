@@ -7,7 +7,7 @@
 - [X] 103号机是来自班德尔城的铂金大神....
 
 ## 使用步骤
-- pip install multiping
+- pip install multiping==1.0.7
 - python main.py
 
 ## 参考
