@@ -3,8 +3,14 @@ import threading
 import os
 import socket
 import time
+import logging
 
-import queue
+from multiping import MultiPing
+
+
+logging.basicConfig(level = logging.INFO,format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 sk = win32com.client.Dispatch("SAPI.SpVoice")
 
@@ -12,41 +18,35 @@ sk = win32com.client.Dispatch("SAPI.SpVoice")
 def say(str):
     sk.speak(str)
 
-IpWatcherQueue = queue.Queue()
+
 IpMap = {}
 
-class IpProductor(threading.Thread):
-    def __init__(self):
-        super(IpProductor,self).__init__()
+# 消费IP
+def pingAll():
+    logger.info("start search...")
+    hostname = socket.getfqdn(socket.gethostname())
+    ip = socket.gethostbyname(hostname)
 
-        hostname = socket.getfqdn(socket.gethostname())
-        ip = socket.gethostbyname(hostname)
+    ipPrefix = ".".join(ip.split(".")[:-1])
+    logger.debug("ipPrefix: %s",ipPrefix)
 
-        self.ipPrefix = ".".join(ip.split(".")[:-1])
-        print(self.ipPrefix) 
+    ips = [ipPrefix + "." + str(ends) for ends in range(2,254)]
+    # logger.debug(ips)
     
-    def run(self):
-        while True:
-            for ipEnd in range(2,255):
-                ipPing = "%s.%s" % (self.ipPrefix ,str(ipEnd))
-                IpWatcherQueue.put(ipPing)
-            
-            time.sleep(0.01)
+    mp = MultiPing(ips)
+    mp.send()
+    responses, no_responses = mp.receive(0.5)
+    logger.debug(responses.keys())
 
-class IpWatcher(threading.Thread):
-    def __init__(self):
-        super(IpWatcher,self).__init__()
-
-    def run(self):
-        while True:
-            ipPing = IpWatcherQueue.get()
-            print ("ping " + ipPing)
-            rs = os.popen("ping %s -n 1 -w 1" % ipPing).read()
-            if "已接收 = 1" in str(rs):
-                if ipPing not in IpMap:
-                    IpMap[ipPing] = True
-                    say("IP尾号为" + ipPing.split(".")[-1] + "的铂金大神，已上线")
-            else:
-                if ipPing in IpMap:
-                    IpMap.pop(ipPing)
-                    say(ipPing.split(".")[-1] + "已下线")
+    for ip in responses.keys():
+        if ip not in IpMap:
+            IpMap[ip] = True
+            say("IP尾号为" + ip.split(".")[-1] + "的铂金大神，已上线")
+            logger.info("%s\tonline",ip)
+    
+    for ip in no_responses:
+        if ip in IpMap:
+            IpMap.pop(ip)
+            say("IP尾号为" + ip.split(".")[-1] + "的铂金大神，已下线")
+            logger.info("%s\toffline",ip)
+    
